@@ -1,3 +1,7 @@
 [submodule "libcxx"]
 	path = module/jni/libcxx
 	url = https://github.com/topjohnwu/libcxx.git
+[submodule "module/jni/proc_maps_parser"]
+	path = module/jni/proc_maps_parser
+	url = https://github.com/F-19-F/proc_maps_parser
+	branch = android
