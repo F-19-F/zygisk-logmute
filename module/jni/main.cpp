@@ -2,16 +2,15 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <dlfcn.h>
-#include <android/log.h>
 #include <sys/mman.h>
 #include <pmparser.h>
 #include "zygisk.hpp"
-
+#include "muteipc.h"
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "Magisk", __VA_ARGS__)
+
 extern void nopFunArm64(void* addr);
 class LogMute : public zygisk::ModuleBase {
 public:
@@ -42,11 +41,18 @@ private:
 #endif
         // Demonstrate connecting to to companion process
         // We ask the companion for a random number
-        unsigned r = 0;
         int fd = api->connectCompanion();
-        read(fd, &r, sizeof(r));
+        cmdresult res;
+        rootcmd cmd = {0};
+        cmd.opcode = CMD_CHECK_POLICY;
+        strcpy(cmd.data,process);
+        write(fd,&cmd,sizeof(cmd));
+        read(fd, &res, sizeof(res));
         close(fd);
-        LOGD("example: process=[%s], r=[%u]\n", process, r);
+        if(res.result == RESULT_UNMUTE){
+            LOGD("UNMUTE %s",process);
+            return;
+        }
         void* handle = dlopen("liblog.so",RTLD_NOW);
 
         if(handle == NULL){
@@ -89,17 +95,12 @@ private:
     }
 
 };
-
-static int urandom = -1;
-
+static companion *impl;
 static void companion_handler(int i) {
-    if (urandom < 0) {
-        urandom = open("/dev/urandom", O_RDONLY);
+    if(impl == nullptr){
+        impl = new companion();
     }
-    unsigned r;
-    read(urandom, &r, sizeof(r));
-    LOGD("example: companion r=[%u]\n", r);
-    write(i, &r, sizeof(r));
+    impl->handler(i);
 }
 
 REGISTER_ZYGISK_MODULE(LogMute)

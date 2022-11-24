@@ -2,7 +2,7 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := logmute
-LOCAL_SRC_FILES := main.cpp nopFun.cpp
+LOCAL_SRC_FILES := main.cpp nopFun.cpp companion.cpp
 LOCAL_STATIC_LIBRARIES := libcxx pmparser
 LOCAL_C_INCLUDES := pmparser
 LOCAL_LDLIBS := -llog
