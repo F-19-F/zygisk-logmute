@@ -1,0 +1,8 @@
+//
+// Created by TF19 on 2022/11/20.
+//
+
+#ifndef ZYGISK_LOGMUTE_MUTEIPC_H
+#define ZYGISK_LOGMUTE_MUTEIPC_H
+
+#endif //ZYGISK_LOGMUTE_MUTEIPC_H
