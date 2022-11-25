@@ -35,7 +35,8 @@ void nopFunArm64(void* addr){
     }
 }
 int memNopArm64(int fd,void* addr){
-    if(lseek(fd,(uint64_t)addr,SEEK_SET) < 0){
+    uint64_t begin = (uint64_t) addr;
+    if(lseek(fd,begin,SEEK_SET) < 0){
         fprintf(stderr,"lseek : %s\n",strerror(errno));
         return -1;
     }
@@ -43,29 +44,36 @@ int memNopArm64(int fd,void* addr){
     u_int32_t arm64_autiasp = *(u_int32_t *)arm64_autiasp_array;
     u_int32_t arm64_nop = *(u_int32_t *)arm64_nop_array;
     u_int32_t arm64_ret = *(u_int32_t *)arm64_ret_array;
-    int off = 1;
+    int noplen = 0;
     uint32_t ibuf,end;
-    read(fd,&ibuf,sizeof(ibuf));
     end = arm64_ret;
-    if (ibuf == arm64_paciasp)
+    // paciasp
+    // o
+    // o
+    // autiasp
+    // ret
+    while (read(fd,&ibuf,sizeof(ibuf)) == sizeof(ibuf))
     {
-        fprintf(stdout,"paciasp\n");
-        end = arm64_autiasp;
+        if(ibuf == arm64_paciasp){
+            end = arm64_autiasp;
+            begin+=4;
+            continue;
+        }
+        if(ibuf == end){
+            break;
+        }
+        noplen++;
     }
-    while(ibuf!=end){
-        off++;
-        read(fd,&ibuf,sizeof(ibuf));
+    uint32_t *wbuf = (uint32_t*)malloc(noplen*sizeof(uint32_t));
+    for(int i = 0;i<noplen;i++){
+        wbuf[i]=arm64_nop;
     }
-    off--;
-    fprintf(stdout,"write %d\n",off);
-    if(lseek(fd,(uint64_t)addr,SEEK_SET) < 0){
+    if(lseek(fd,begin,SEEK_SET) < 0){
         fprintf(stderr,"lseek : %s\n",strerror(errno));
         return -1;
     }
-    for (int i = 0; i < off; i++)
-    {
-        write(fd,&arm64_nop,sizeof(arm64_nop));
-    }
+    write(fd,wbuf,noplen*sizeof(uint32_t));
+    free(wbuf);
     return 0;
 }
 int do_nop(int pid,void* addr){
