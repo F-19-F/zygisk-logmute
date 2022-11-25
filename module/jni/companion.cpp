@@ -45,8 +45,8 @@ companion::companion() {
             }
         }
     }
-    thread t1(mon);
-    t1.detach();
+//    thread t1(mon);
+//    t1.detach();
     LOGD("init loop done!");
     closedir(proc);
 
