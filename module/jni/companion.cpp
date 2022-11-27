@@ -9,6 +9,9 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <elf.h>
+#include <fstream>
+#include <vector>
+#include <sys/stat.h>
 #include "muteipc.h"
 #include <thread>
 using namespace std;
@@ -17,6 +20,7 @@ bool is64elf(pid_t pid);
 bool isignore(pid_t pid);
 [[noreturn]]
 void mon();
+companion* controller;
 companion::companion() {
     LOGD("LogMute init");
     DIR* proc;
@@ -32,7 +36,7 @@ companion::companion() {
             continue;
         }
         if(pid){
-            pids.insert(make_pair(pid, true));
+//            pids.insert(make_pair(pid, true));
             if(!isignore(pid)){
                 if(!is64elf(pid)){
                     continue;
@@ -40,14 +44,16 @@ companion::companion() {
                 if(doMemNop(pid) != 0){
                     LOGD("NOP %d fail!",pid);
                 }else{
-                    LOGD("NOP %d success!",pid);
+//                    LOGD("NOP %d success!",pid);
                 }
             }
         }
     }
-//    thread t1(mon);
-//    t1.detach();
-    LOGD("init loop done!");
+    controller = this;
+    thread t1(mon);
+    t1.detach();
+
+//    LOGD("init loop done!");
     closedir(proc);
 
 }
@@ -58,7 +64,7 @@ void companion::handler(int fd) {
     read(fd, &cmd, sizeof(cmd));
     switch (cmd.opcode) {
         case CMD_CHECK_POLICY:
-            if(strstr(cmd.data, "powerkeeper") != NULL){
+            if(checkPolicy(cmd.data)){
                 res.result = RESULT_UNMUTE;
             } else{
                 res.result = RESULT_MUTE;
@@ -70,8 +76,16 @@ void companion::handler(int fd) {
 int companion::doMemNop(int pid) {
     return nopLog(pid);
 }
-
-
+void companion::setPolicy(std::string pkgname, bool sw) {
+    policy[pkgname]=sw;
+}
+bool companion::checkPolicy(std::string pkgname) {
+    auto r = this->policy.find(pkgname);
+    if(r != this->policy.end()){
+        return r->second;
+    }
+    return false;
+}
 
 bool isignore(pid_t pid){
     string p = "/proc/"+ to_string(pid)+"/exe";
@@ -107,100 +121,52 @@ bool is64elf(pid_t pid){
         return false;
     }
 }
-
-int binarySearch(int* arr,int val,int len){
-    if(len == 0){
-        return -1;
-    }
-    int left = 0,right = len;
-    int i = (left+right)/2,next;
-    while (1)
-    {
-        if(val > arr[i]){
-            left = i;
-        }else if (val < arr[i])
-        {
-            right = i;
-        }else{
-            return 0;
-        }
-        next = (left+right)/2;
-        if (next == i)
-        {
-            return -1;
-        }
-        i = next;
-    }
-
-
-}
-#define SEQ_SIZE 100000
-#define TLINKER "/system/bin/linker64"
-[[noreturn]]
+#define CONFIG_FILE "/data/local/tmp/log_whitelist.conf"
 void mon()
 {
     int fd = inotify_init();
-    inotify_add_watch(fd, TLINKER, IN_OPEN);
+    if(inotify_add_watch(fd, CONFIG_FILE, IN_ATTRIB)<0){
+        fstream f(CONFIG_FILE,ios::out);
+        f<<"# write log white pkgname list here \n";
+        f.close();
+        chmod(CONFIG_FILE,S_IREAD|S_IWRITE|S_IRGRP|S_IWGRP);
+        chown(CONFIG_FILE,2000,2000);
+        inotify_add_watch(fd, CONFIG_FILE, IN_ATTRIB);
+    }
     struct inotify_event *event;
     uint8_t buf[500];
-    int i = 0;
-    int oldlen = 0;
-    DIR *d;
-    struct dirent *subp;
-    pid_t old_pids[SEQ_SIZE],new_pids[SEQ_SIZE];
-    // treeNode btree[BTREESIZE] = {0};
-    int pid;
-    // if (d== NULL)
-    // {
-    //     fprintf(stderr,"d == NULL\n");
-    //     return -1;
-    // }
-    struct timeval tv;
-    gettimeofday(&tv,NULL);
-    time_t t_last = tv.tv_sec,t_now = 0;
     while (true)
     {
-        int ct = 0;
         if (read(fd, buf, sizeof(buf)) < 0)
         {
             perror("read");
         }
-        gettimeofday(&tv,NULL);
-        t_now = tv.tv_sec;
-        if(t_now - t_last <= 1){
-            // fprintf(stdout,"too short %ld \n",t_now - t_last);
-            continue;
-        }
         event = (struct inotify_event *)buf;
-        if (event->mask & IN_OPEN)
-        {
-            ++i;
-            // fprintf(stdout, "open%d\n", i);
+        fstream config(CONFIG_FILE,ios::in);
+        if(!config){
+            LOGD("CONFIG file not exists!");
         }
-        d = opendir("/proc");
-        while ((subp = readdir(d))!=NULL)
-        {
-            pid = atoi(subp->d_name);
-            if (subp != NULL && pid)
-            {
-                // fprintf(stdout,"pid = %d\n",pid);
-                if(binarySearch(old_pids,pid,oldlen) != 0){
-                    if(!isignore(pid)){
-                        if(is64elf(pid)){
-                            LOGD("nop new process %d",pid);
-                            nopLog(pid);
-                        }
-                    }
-                    // fprintf(stdout,"new pid:%d\n",pid);
+        string line;
+        vector<string> whitelist;
+        for( std::string line; getline( config, line ); ){
+            if(!line.empty()){
+                if(line[0]=='#'){
+                    continue;
                 }
-                new_pids[ct++] = pid;
+                if(controller!= nullptr){
+                    LOGD("add white %s",line.c_str());
+                    whitelist.push_back(line);
+                    controller->setPolicy(line,true);
+                }
             }
         }
-        // fprintf(stdout, "sum:%d\n", ct);
-        memcpy(old_pids,new_pids,ct*sizeof(pid_t));
-        t_last = t_now;
-        oldlen = ct;
-        closedir(d);
-        /* code */
+        for (auto i = controller->policy.begin(); i != controller->policy.end() ; ++i) {
+            auto r = find(whitelist.begin(),whitelist.end(),i->first);
+            if(r==whitelist.end()){
+                LOGD("remove %s",i->first.c_str());
+                i->second = false;
+            }
+        }
+        config.close();
     }
 }

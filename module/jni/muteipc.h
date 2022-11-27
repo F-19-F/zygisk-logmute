@@ -26,11 +26,10 @@ class companion {
 public:
     companion();
     void handler(int fd);
-    int checkPolicy(std::string pkgname);
+    bool checkPolicy(std::string pkgname);
+    void setPolicy(std::string pkgname,bool sw);
     int doMemNop(int pid);
-private:
-    std::map<pid_t ,bool> pids;
-    int ifd;
+    std::map<std::string ,bool> policy;
 };
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "LogMuter", __VA_ARGS__)
 #endif //ZYGISK_LOGMUTE_MUTEIPC_H
