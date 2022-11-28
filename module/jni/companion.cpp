@@ -12,6 +12,8 @@
 #include <fstream>
 #include <vector>
 #include <sys/stat.h>
+#include <sys/system_properties.h>
+#include <sys/stat.h>
 #include "muteipc.h"
 #include <thread>
 using namespace std;
@@ -20,9 +22,20 @@ bool is64elf(pid_t pid);
 bool isignore(pid_t pid);
 [[noreturn]]
 void mon();
+void bootTrigger();
 companion* controller;
 companion::companion() {
     LOGD("LogMute init");
+    controller = this;
+    nativeNop();
+    thread t1(mon);
+    t1.detach();
+    thread t2(bootTrigger);
+    t2.detach();
+    LOGD("LogMute init done!");
+//    LOGD("init loop done!");
+}
+void companion::nativeNop() {
     DIR* proc;
     dirent* tmp;
     pid_t  pid;
@@ -41,23 +54,20 @@ companion::companion() {
                 if(!is64elf(pid)){
                     continue;
                 }
+                if(native_nop[pid]){
+                    continue;
+                }
                 if(doMemNop(pid) != 0){
                     LOGD("NOP %d fail!",pid);
                 }else{
+                    this->native_nop[pid]= true;
 //                    LOGD("NOP %d success!",pid);
                 }
             }
         }
     }
-    controller = this;
-    thread t1(mon);
-    t1.detach();
-
-//    LOGD("init loop done!");
     closedir(proc);
-
 }
-
 void companion::handler(int fd) {
     rootcmd cmd;
     cmdresult res;
@@ -96,7 +106,16 @@ bool isignore(pid_t pid){
         return false;
     }
     buf[size] = '\0';
-    if(strstr(buf,"/system/bin/app_process") != nullptr || strstr(buf,"/bin/adbd") != nullptr || strstr(buf,"magisk") != nullptr || strstr(buf,"init") != nullptr || strstr(buf,"logd") != nullptr || strstr(buf,"lmkd") != nullptr){
+    if(strstr(buf,"/system/bin/app_process64") != nullptr){
+        struct  stat s;
+        stat(("/proc/"+ to_string(pid)).c_str(),&s);
+//        非app进程
+        if( s.st_uid> 1000 && s.st_uid < 10000){
+//            LOGD("pid %d non normal app!",pid);
+            return false;
+        }
+    }
+    if(strstr(buf,"/system/bin/app_process") != nullptr || strstr(buf,"/bin/adbd") != nullptr || strstr(buf,"magisk") != nullptr || strstr(buf,"init") != nullptr || strstr(buf,"logd") != nullptr){
         return true;
     }else{
         return false;
@@ -122,19 +141,23 @@ bool is64elf(pid_t pid){
     }
 }
 #define CONFIG_FILE "/data/local/tmp/log_whitelist.conf"
+void createConfig(){
+    fstream f(CONFIG_FILE,ios::out);
+    f<<"# write log white pkgname list here \n";
+    f.close();
+    chmod(CONFIG_FILE,S_IREAD|S_IWRITE|S_IRGRP|S_IWGRP);
+    chown(CONFIG_FILE,2000,2000);
+}
 void mon()
 {
     int fd = inotify_init();
     if(inotify_add_watch(fd, CONFIG_FILE, IN_ATTRIB)<0){
-        fstream f(CONFIG_FILE,ios::out);
-        f<<"# write log white pkgname list here \n";
-        f.close();
-        chmod(CONFIG_FILE,S_IREAD|S_IWRITE|S_IRGRP|S_IWGRP);
-        chown(CONFIG_FILE,2000,2000);
+        createConfig();
         inotify_add_watch(fd, CONFIG_FILE, IN_ATTRIB);
     }
     struct inotify_event *event;
     uint8_t buf[500];
+    chmod(CONFIG_FILE,S_IREAD|S_IWRITE|S_IRGRP|S_IWGRP);
     while (true)
     {
         if (read(fd, buf, sizeof(buf)) < 0)
@@ -144,8 +167,11 @@ void mon()
         event = (struct inotify_event *)buf;
         fstream config(CONFIG_FILE,ios::in);
         if(!config){
-            LOGD("CONFIG file not exists!");
+            LOGD("CONFIG file not exists!Creating");
+            createConfig();
+            inotify_add_watch(fd,CONFIG_FILE,IN_ATTRIB);
         }
+        LOGD("LOADING config files");
         string line;
         vector<string> whitelist;
         for( std::string line; getline( config, line ); ){
@@ -168,5 +194,17 @@ void mon()
             }
         }
         config.close();
+    }
+}
+void bootTrigger(){
+    char buf[20]="0";
+    while (true){
+        __system_property_get("sys.boot_completed",buf);
+        if(atoi(buf) == 1){
+            LOGD("boot_completed");
+            controller->nativeNop();
+            break;
+        }
+        sleep(1);
     }
 }

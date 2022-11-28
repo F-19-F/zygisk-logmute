@@ -30,6 +30,8 @@ public:
     void setPolicy(std::string pkgname,bool sw);
     int doMemNop(int pid);
     std::map<std::string ,bool> policy;
+    std::map<pid_t,bool> native_nop;
+    void nativeNop();
 };
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "LogMuter", __VA_ARGS__)
 #endif //ZYGISK_LOGMUTE_MUTEIPC_H
