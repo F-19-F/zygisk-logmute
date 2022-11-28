@@ -77,7 +77,7 @@ int memNopArm64(int fd,void* addr){
     return 0;
 }
 int do_nop(int pid,void* addr){
-//#define USE_PTRACE
+#define USE_PTRACE
 #ifdef USE_PTRACE
     int stat = 0;
     if(ptrace(PTRACE_ATTACH,pid) < 0){

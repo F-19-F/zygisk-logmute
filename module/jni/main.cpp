@@ -51,6 +51,7 @@ private:
         close(fd);
         if(res.result == RESULT_UNMUTE){
             LOGD("UNMUTE %s",process);
+            api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
             return;
         }
         void* handle = dlopen("liblog.so",RTLD_NOW);
