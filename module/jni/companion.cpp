@@ -18,7 +18,7 @@
 #include <thread>
 using namespace std;
 extern int nopLog(int pid);
-bool is64elf(pid_t pid);
+int elftype(pid_t pid);
 bool isignore(pid_t pid);
 [[noreturn]]
 void mon();
@@ -51,9 +51,20 @@ void companion::nativeNop() {
         if(pid){
 //            pids.insert(make_pair(pid, true));
             if(!isignore(pid)){
-                if(!is64elf(pid)){
+                int t = elftype(pid);
+                if(t<0){
                     continue;
                 }
+#ifdef __arm__
+                if( t != EM_ARM){
+                    continue;
+                }
+#endif
+#ifdef __aarch64__
+                if (t != EM_AARCH64){
+                    continue;
+                }
+#endif
                 if(native_nop[pid]){
                     continue;
                 }
@@ -115,7 +126,7 @@ bool isignore(pid_t pid){
             return false;
         }
     }
-    if(strstr(buf,"/system/bin/app_process") != nullptr || strstr(buf,"/bin/adbd") != nullptr || strstr(buf,"magisk") != nullptr || strstr(buf,"init") != nullptr || strstr(buf,"logd") != nullptr){
+    if(strstr(buf,"/system/bin/app_process") != nullptr || strstr(buf,"/bin/adbd") != nullptr || strstr(buf,"magisk") != nullptr || strstr(buf,"/system/bin/init") != nullptr || strstr(buf,"logd") != nullptr){
         return true;
     }else{
         return false;
@@ -124,21 +135,17 @@ bool isignore(pid_t pid){
 
 
 
-bool is64elf(pid_t pid){
+int elftype(pid_t pid){
     string p = "/proc/"+ to_string(pid)+"/exe";
     int fd = open(p.c_str(),O_RDONLY);
     if(fd < 0){
 //        LOGD("open: %s %s",p.c_str(), strerror(errno));
-        return false;
+        return -1;
     }
     Elf64_Ehdr header;
     read(fd,&header,sizeof(Elf64_Ehdr));
     close(fd);
-    if(header.e_machine == EM_AARCH64 || header.e_machine == EM_X86_64){
-        return true;
-    }else{
-        return false;
-    }
+    return header.e_machine;
 }
 #define CONFIG_FILE "/data/local/tmp/log_whitelist.conf"
 void createConfig(){
