@@ -12,6 +12,7 @@ using zygisk::ServerSpecializeArgs;
 
 
 extern void nopFunArm64(void* addr);
+extern void nopFunArm32(void* addr);
 class LogMute : public zygisk::ModuleBase {
 public:
     void onLoad(Api *api, JNIEnv *env) override {
@@ -35,10 +36,6 @@ private:
     JNIEnv *env;
 
     void preSpecialize(const char *process) {
-#ifndef  __LP64__
-        LOGD("non 64");
-        return;
-#endif
         // Demonstrate connecting to to companion process
         // We ask the companion for a random number
         int fd = api->connectCompanion();
@@ -79,7 +76,12 @@ private:
                     LOGD("mprotect : %s", strerror(errno));
                     break;
                 }
+#ifdef __arm__
+                nopFunArm32(funPtr);
+#endif
+#ifdef __aarch64__
                 nopFunArm64(funPtr);
+#endif
                 // -w
                 if (mprotect(maps_tmp->addr_start,maps_tmp->length,PROT_EXEC|PROT_READ) != 0){
                     LOGD("mprotect : %s", strerror(errno));
