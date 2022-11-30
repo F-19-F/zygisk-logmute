@@ -18,12 +18,14 @@
 #include <thread>
 using namespace std;
 extern int nopLog(int pid);
+extern unsigned long orig_code;
 int elftype(pid_t pid);
 bool isignore(pid_t pid);
 [[noreturn]]
 void mon();
 void bootTrigger();
 companion* controller;
+static bool booted = false;
 companion::companion() {
     LOGD("LogMute init");
     controller = this;
@@ -85,8 +87,9 @@ void companion::handler(int fd) {
     read(fd, &cmd, sizeof(cmd));
     switch (cmd.opcode) {
         case CMD_CHECK_POLICY:
-            if(checkPolicy(cmd.data)){
+            if(checkPolicy((char *)cmd.data)){
                 res.result = RESULT_UNMUTE;
+                *(unsigned long*)res.data = orig_code;
             } else{
                 res.result = RESULT_MUTE;
             }
@@ -114,19 +117,33 @@ bool isignore(pid_t pid){
     int size = readlink(p.c_str(),buf,PATH_MAX);
     if(size < 0){
 //        LOGD("readlink: %s %s",p.c_str(), strerror(errno));
-        return false;
+        return true;
     }
     buf[size] = '\0';
-    if(strstr(buf,"/system/bin/app_process64") != nullptr){
-        struct  stat s;
-        stat(("/proc/"+ to_string(pid)).c_str(),&s);
+//    if(booted && strstr(buf,"/system/bin/app_process") != nullptr){
+        if(booted && strstr(buf,"/system/bin/app_process") != nullptr){
+            struct  stat s;
+            stat(("/proc/"+ to_string(pid)).c_str(),&s);
 //        非app进程
-        if( s.st_uid> 1000 && s.st_uid < 10000){
+            if( s.st_uid> 1000 && s.st_uid < 10000){
 //            LOGD("pid %d non normal app!",pid);
-            return false;
+                return false;
+            }
         }
-    }
-    if(strstr(buf,"/system/bin/app_process") != nullptr || strstr(buf,"/bin/adbd") != nullptr || strstr(buf,"magisk") != nullptr || strstr(buf,"/system/bin/init") != nullptr || strstr(buf,"logd") != nullptr){
+//        return true;
+//        int fd = open(("/proc/"+ to_string(pid) + "/cmdline").c_str(),O_RDONLY);
+//        if(fd < 0){
+//            LOGD("fd < 0 %s", strerror(errno));
+//            return true;
+//        }
+//        char cmd[PATH_MAX] = {0};
+//        read(fd,cmd,PATH_MAX);
+//        close(fd);
+//        if(strcmp(cmd,"zygote") == 0 || strcmp(cmd,"zygote64") == 0){
+//            return false;
+//        }
+//    }
+    if(strstr(buf,"/bin/adbd") != nullptr || strstr(buf,"magisk") != nullptr || strstr(buf,"/system/bin/init") != nullptr || strstr(buf,"logd") != nullptr){
         return true;
     }else{
         return false;
@@ -193,11 +210,14 @@ void mon()
                 }
             }
         }
-        for (auto i = controller->policy.begin(); i != controller->policy.end() ; ++i) {
+        for (auto i = controller->policy.begin(); i != controller->policy.end() ;) {
             auto r = find(whitelist.begin(),whitelist.end(),i->first);
             if(r==whitelist.end()){
                 LOGD("remove %s",i->first.c_str());
-                i->second = false;
+                i = controller->policy.erase(i);
+//                i->second = false;
+            }else{
+                ++i;
             }
         }
         config.close();
@@ -209,6 +229,7 @@ void bootTrigger(){
         __system_property_get("sys.boot_completed",buf);
         if(atoi(buf) == 1){
             LOGD("boot_completed");
+            booted = true;
             controller->nativeNop();
             break;
         }

@@ -11,15 +11,24 @@
 #include <fcntl.h>
 #include <dlfcn.h>
 #include "muteipc.h"
+unsigned long orig_code = 0;
+unsigned long backup(void * addr);
 // nop nop nop ret
 static u_int8_t arm64_ret_array[8] = {0x1f,0x20,0x03,0xd5,0xc0,0x03,0x5f,0xd6};
 // bx lr bx lr
 static u_int8_t thumb_ret_array[4] = {0x70,0x47,0x70,0x47};
-void nopFunArm64(void* addr){
-    *(uint64_t*)addr = *(uint64_t*)arm64_ret_array;
+static u_int8_t arm_ret_array[4] = {0x1e,0xff,0x2f,0xe1};
+void restoreFunArm64(void* addr, unsigned long code){
+    *(unsigned long*)addr = code;
+//    *(uint64_t*)addr = *(uint64_t*)arm64_ret_array;
 }
-void nopFunArm32(void *addr){
-    *(uint32_t *)(void *)((off_t )addr - 1) = *(u_int32_t *)thumb_ret_array;
+void restoreFunArm(void *addr, unsigned long code){
+    if((off_t)addr % 2 != 0){
+        *(unsigned long*)((off_t )addr - 1) = code;
+    } else{
+        *(unsigned long *)addr = code;
+    }
+
 }
 int do_nop(int pid,void* addr){
     int stat = 0;
@@ -30,10 +39,19 @@ int do_nop(int pid,void* addr){
     }
     waitpid(pid,&stat,WUNTRACED);
 #ifdef __arm__
-    unsigned long wbuf = *(uint32_t*)thumb_ret_array;
-    if (ptrace(PTRACE_POKETEXT,pid,(void *)((off_t) addr -1),wbuf) == 0){
-        ret = 0;
+    unsigned long wbuf = 0;
+    if((off_t)addr % 2 != 0){
+        wbuf = *(uint32_t*)thumb_ret_array;
+        if (ptrace(PTRACE_POKETEXT,pid,(void *)((off_t) addr -1),wbuf) == 0){
+            ret = 0;
+        }
+    }else{
+        wbuf = *(uint32_t*)arm_ret_array;
+        if (ptrace(PTRACE_POKETEXT,pid,addr,wbuf) == 0){
+            ret = 0;
+        }
     }
+
 #endif
 #ifdef  __aarch64__
     unsigned long wbuf = *(uint64_t*)arm64_ret_array;
@@ -92,6 +110,9 @@ int getOffset(const char* dlname,const char* symbol,uint64_t* res){
     fprintf(stdout,"handle = 0x%" PRIx64 "\n",(uint64_t)handle);
     fprintf(stdout,"map_start = 0x%" PRIx64 "\n",(uint64_t)local_map.addr_start);
     fprintf(stdout,"fun_start = 0x%" PRIx64 "\n",(uint64_t)fun);
+    if(orig_code == 0){
+        orig_code = backup(fun);
+    }
     *res = (uint64_t)fun - (uint64_t)local_map.addr_start;
     return 0;
 
@@ -141,4 +162,11 @@ int nopLog(int pid){
     }
 //    fprintf(stdout,"remote_fun_start = 0x%" PRIx64 "\n",(uint64_t)rmote_addr);
     return do_nop(pid,(void *)rmote_addr);
+}
+unsigned long backup(void * addr){
+    if((off_t)addr % 2 !=0){
+        return *(unsigned long *)((off_t)addr - 1);
+    } else{
+        return *(unsigned long *)addr;
+    }
 }
