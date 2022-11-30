@@ -16,10 +16,11 @@ enum {
 };
 typedef struct {
     int opcode;
-    char data[100];
+    uint8_t data[100];
 } rootcmd;
 typedef struct {
     int result;
+    uint8_t data[100];
 } cmdresult;
 
 class companion {

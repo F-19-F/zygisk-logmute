@@ -11,8 +11,8 @@ using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
 
-extern void nopFunArm64(void* addr);
-extern void nopFunArm32(void* addr);
+extern void restoreFunArm64(void* addr, unsigned long code);
+extern void restoreFunArm(void* addr,unsigned long code);
 class LogMute : public zygisk::ModuleBase {
 public:
     void onLoad(Api *api, JNIEnv *env) override {
@@ -42,15 +42,15 @@ private:
         cmdresult res;
         rootcmd cmd = {0};
         cmd.opcode = CMD_CHECK_POLICY;
-        strcpy(cmd.data,process);
+        strcpy((char *)cmd.data,process);
         write(fd,&cmd,sizeof(cmd));
         read(fd, &res, sizeof(res));
         close(fd);
-        if(res.result == RESULT_UNMUTE){
-            LOGD("UNMUTE %s",process);
+        if(res.result != RESULT_UNMUTE){
             api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
             return;
         }
+        unsigned long code = *(unsigned long *)res.data;
         void* handle = dlopen("liblog.so",RTLD_NOW);
 
         if(handle == NULL){
@@ -77,10 +77,10 @@ private:
                     break;
                 }
 #ifdef __arm__
-                nopFunArm32(funPtr);
+                restoreFunArm(funPtr,code);
 #endif
 #ifdef __aarch64__
-                nopFunArm64(funPtr);
+                restoreFunArm64(funPtr,code);
 #endif
                 // -w
                 if (mprotect(maps_tmp->addr_start,maps_tmp->length,PROT_EXEC|PROT_READ) != 0){
