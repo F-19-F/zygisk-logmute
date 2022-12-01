@@ -18,7 +18,8 @@
 #include <thread>
 using namespace std;
 extern int nopLog(int pid);
-extern unsigned long orig_code;
+extern off_t orig_len;
+extern u_int8_t* backup_code;
 int elftype(pid_t pid);
 bool isignore(pid_t pid);
 [[noreturn]]
@@ -89,7 +90,8 @@ void companion::handler(int fd) {
         case CMD_CHECK_POLICY:
             if(checkPolicy((char *)cmd.data)){
                 res.result = RESULT_UNMUTE;
-                *(unsigned long*)res.data = orig_code;
+                memcpy(res.data,backup_code,orig_len);
+                res.len = orig_len;
             } else{
                 res.result = RESULT_MUTE;
             }
