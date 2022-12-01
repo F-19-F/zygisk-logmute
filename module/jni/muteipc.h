@@ -20,7 +20,8 @@ typedef struct {
 } rootcmd;
 typedef struct {
     int result;
-    uint8_t data[100];
+    off_t len;
+    uint8_t data[1000];
 } cmdresult;
 
 class companion {

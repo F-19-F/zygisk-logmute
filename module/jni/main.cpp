@@ -11,8 +11,8 @@ using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
 
-extern void restoreFunArm64(void* addr, unsigned long code);
-extern void restoreFunArm(void* addr,unsigned long code);
+extern void restoreFunArm(void *addr, uint8_t *code,off_t len);
+extern void restoreFunArm64(void* addr, uint8_t *code,off_t len);
 class LogMute : public zygisk::ModuleBase {
 public:
     void onLoad(Api *api, JNIEnv *env) override {
@@ -77,10 +77,10 @@ private:
                     break;
                 }
 #ifdef __arm__
-                restoreFunArm(funPtr,code);
+                restoreFunArm(funPtr,res.data,res.len);
 #endif
 #ifdef __aarch64__
-                restoreFunArm64(funPtr,code);
+                restoreFunArm64(funPtr,res.data,res.len);
 #endif
                 // -w
                 if (mprotect(maps_tmp->addr_start,maps_tmp->length,PROT_EXEC|PROT_READ) != 0){
