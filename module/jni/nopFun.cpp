@@ -73,6 +73,7 @@ int do_nop(int pid,void* addr){
     }
     waitpid(pid,&stat,WUNTRACED);
 #ifdef __arm__
+// thumb
     if((off_t)addr % 2 != 0){
         if(ptrace_writedata(pid,(uint8_t*)((off_t)addr-1),patch_code,orig_len) == 0){
             ret = 0;
@@ -196,6 +197,7 @@ int nopLog(int pid){
 //unsigned long ptrace_read(void * addr){
 //
 //}
+// should be called only once
 void genPatchAndBackup(void * addr){
 #ifdef __arm__
     orig_len = 4;
