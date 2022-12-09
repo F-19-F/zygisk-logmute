@@ -68,6 +68,7 @@ private:
             LOGD("[map]: cannot parse the memory map");
             return;
         }
+// makes address writable
         while( (maps_tmp = pmparser_next(maps)) != NULL){
             if((void *)funPtr >  maps_tmp->addr_start && (void *)funPtr < maps_tmp->addr_end){
                 // pmparser_print(maps_tmp,0);
@@ -76,6 +77,7 @@ private:
                     LOGD("mprotect : %s", strerror(errno));
                     break;
                 }
+// write original code
 #ifdef __arm__
                 restoreFunArm(funPtr,res.data,res.len);
 #endif
@@ -98,6 +100,7 @@ private:
     }
 
 };
+// run in zygiskd with root privileges
 static companion *impl;
 static void companion_handler(int i) {
     if(impl == nullptr){
